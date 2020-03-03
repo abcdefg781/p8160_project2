@@ -1,0 +1,40 @@
+---
+title: "Predict Function"
+author: "Adeline Shin"
+date: "3/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(glmnet)
+```
+
+# Loading the Data
+```{r}
+cancer_data = read.csv("./breast-cancer.csv")
+```
+
+# Predict Function
+```{r}
+predict_fcn = function(x, y, df, test_df){
+  # Parameters
+  ctrl = trainControl(method = "repeatedcv", number = 5, repeats = 5)
+  ncomp = length(df)
+  
+  # Model
+  ridge_fit = train(x, y,
+                    method = "glmnet", # Can be changed to another method
+                    trControl = ctrl,
+                    tuneGrid = expand.grid(alpha = 0, 
+                                           lambda = exp(seq(-5, 5, length = 100))))
+  plot(ridge_fit, xTrans = function(x) log(x))
+  
+  # Prediction and Fit
+  ridge_pred = predict(ridge_fit, newdata = test_df)
+  ridge_mse = mse(test_df$test_y, ridge_pred)
+}
+```
+
