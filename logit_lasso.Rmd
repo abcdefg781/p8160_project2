@@ -1,0 +1,71 @@
+---
+title: "logit_lasso"
+author: "Jungang Zou"
+date: "3/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(matlib)
+
+```
+
+# Loading the Loglike, gradient, hess
+```{r}
+try(source("./loglike_grad_hess_func.R"), silent = TRUE)
+```
+
+#  
+
+
+# Newton Method
+```{r}
+newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_rate = 0.5){
+  if (is.null(beta))
+    beta = matrix(rep(0, ncol(x)))
+  optimization = func(x, y, beta)
+  step = 1
+  previous_loglik = -optimization$loglik
+  while (previous_loglik > tol) {
+    if (step == 12)
+      return(beta)
+    print(paste("step:", step, "  positive loglike loss:", -optimization$loglik))
+    
+    lambda = lambda_init
+    beta_new = beta - lambda * inv(optimization$Hess) %*% optimization$grad
+    optimization = func(x, y, beta_new)
+    while (previous_loglik <= -optimization$loglik) {
+      lambda = lambda * decay_rate
+      beta_new = beta - inv(optimization$Hess) %*% optimization$grad
+      optimization = func(x, y, beta_new)
+    }
+    previous_loglik = -optimization$loglik
+    beta = beta_new
+    step = step + 1
+  }
+}
+
+
+```
+
+
+# Loading the data
+```{r}
+cancer_data = read.csv("./breast-cancer.csv")
+
+x = cancer_data %>% select(-id, -diagnosis) %>% as.matrix()
+
+y = cancer_data %>% 
+  select(diagnosis) %>% 
+  mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
+  as.matrix()
+
+beta = matrix(rep(0, ncol(x)))
+
+beta = newton_optimize(x, y)
+func(x, y, beta)
+```

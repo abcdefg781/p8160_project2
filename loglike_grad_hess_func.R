@@ -8,8 +8,8 @@ func = function(x, y, par) {
   u = x %*% par
   expu = exp(u)
   
-  loglik = vector(mode = "numeric", 569)
-  for(i in 1:569)
+  loglik = vector(mode = "numeric", length(y))
+  for(i in 1:length(y))
     loglik[i] = y[i]*u[i] - log(1 + expu[i])
   loglik_value = sum(loglik)
   
@@ -17,10 +17,10 @@ func = function(x, y, par) {
   p <- expu / (1 + expu)
   
   # P(Y_i=1|x_i)
-  grad = vector(mode = "numeric", 13)
+  grad = vector(mode = "numeric", length(par))
   
   #grad[1] = sum(y - p)
-  for(i in 1:13)
+  for(i in 1:length(par))
     grad[i] = sum(t(x[,i])%*%(y - p))
   
   #Hess <- -t(x)%*%p%*%t(1-p)%*%x
