@@ -29,14 +29,19 @@ newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_ra
   optimization = func(x, y, beta)
   step = 1
   previous_loglik = -optimization$loglik
+
   while (previous_loglik > tol) {
-    if (step == 12)
-      return(beta)
     print(paste("step:", step, "  positive loglike loss:", -optimization$loglik))
-    
     lambda = lambda_init
     beta_new = beta - lambda * inv(optimization$Hess) %*% optimization$grad
+    print(beta_new)
+    
+    
+    # the error occurs here, that the positive loglike loss is Inf at the 12th step.
     optimization = func(x, y, beta_new)
+    print(-optimization$loglik)
+    
+    # since the loglike loss is Inf which is larger than loglike loss at previous step, the having process starts
     while (previous_loglik <= -optimization$loglik) {
       lambda = lambda * decay_rate
       beta_new = beta - inv(optimization$Hess) %*% optimization$grad
