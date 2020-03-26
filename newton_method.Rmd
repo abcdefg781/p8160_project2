@@ -23,7 +23,7 @@ try(source("./loglike_grad_hess_func.R"), silent = TRUE)
 
 # Newton Method
 ```{r}
-newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_rate = 0.5){
+newton_optimize = function(x, y, beta = NULL, tol = 1e-10, lambda_init = 1, decay_rate = 0.5){
   if (is.null(beta))
     beta = matrix(rep(0, ncol(x)))
   optimization = func(x, y, beta)
@@ -34,13 +34,10 @@ newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_ra
     print(paste("step:", step, "  positive loglike loss:", -optimization$loglik))
     lambda = lambda_init
     beta_new = beta - lambda * inv(optimization$Hess) %*% optimization$grad
-    print(beta_new)
-    
-    
     # the error occurs here, that the positive loglike loss is Inf at the 12th step.
     optimization = func(x, y, beta_new)
     print(-optimization$loglik)
-    
+
     # since the loglike loss is Inf which is larger than loglike loss at previous step, the having process starts
     while (previous_loglik <= -optimization$loglik) {
       lambda = lambda * decay_rate
@@ -59,17 +56,33 @@ newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_ra
 
 # Loading the data
 ```{r}
-cancer_data = read.csv("./breast-cancer.csv")
+cancer_data = read_csv("./breast-cancer.csv")
 
-x = cancer_data %>% select(-id, -diagnosis) %>% as.matrix()
+# Assign x values
+x = cancer_data %>% 
+  select(-id, -diagnosis) 
 
+# Standardize x values
+# Function to standardize
+standardize = function(col) {
+  mean = mean(col)
+  stdev = sd(col)
+  return((col - mean)/stdev)
+}
+
+x = x %>% 
+  map_df(., standardize) %>% 
+  mutate(intercept = 1) %>% 
+  as.matrix()
+
+# Assign cancer diagnosis as y values
 y = cancer_data %>% 
   select(diagnosis) %>% 
-  mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
+  mutate(diagnosis = ifelse(diagnosis == "M", 1, 0)) %>% 
   as.matrix()
 
 beta = matrix(rep(0, ncol(x)))
 
-beta = newton_optimize(x, y, beta = beta)
+test = newton_optimize(x, y, beta = beta)
 func(x, y, beta)
 ```
