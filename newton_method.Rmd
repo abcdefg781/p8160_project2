@@ -23,34 +23,49 @@ try(source("./loglike_grad_hess_func.R"), silent = TRUE)
 
 # Newton Method
 ```{r}
-newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_rate = 0.5){
+newton_optimize = function(x, y, beta = NULL, tol = 0.001, lambda_init = 1, decay_rate = 0.5){
   if (is.null(beta))
-    beta = matrix(rep(0, ncol(x)))
+    beta = matrix(rep(0, ncol(x) + 1))
+  x = cbind(rep(1, nrow(x)), x)
   optimization = func(x, y, beta)
   step = 1
   previous_loglik = -optimization$loglik
 
-  while (previous_loglik > tol) {
+  while (TRUE) {
+    
     print(paste("step:", step, "  positive loglike loss:", -optimization$loglik))
+   
     lambda = lambda_init
-    beta_new = beta - lambda * inv(optimization$Hess) %*% optimization$grad
-    print(beta_new)
+    
+    beta_new <- tryCatch({
+        beta - lambda * inv(optimization$Hess) %*% optimization$grad
+      }, error = function(err) {return(beta)})
+
+
     
     
     # the error occurs here, that the positive loglike loss is Inf at the 12th step.
     optimization = func(x, y, beta_new)
-    print(-optimization$loglik)
+    #print(-optimization$loglik)
     
     # since the loglike loss is Inf which is larger than loglike loss at previous step, the having process starts
     while (previous_loglik <= -optimization$loglik) {
       lambda = lambda * decay_rate
-      beta_new = beta - inv(optimization$Hess) %*% optimization$grad
+      
+      beta_new <- tryCatch({
+        beta - lambda * inv(optimization$Hess) %*% optimization$grad
+      }, error = function(err) {return(beta)})
+      
+      
       optimization = func(x, y, beta_new)
     }
+    if (abs(previous_loglik - -optimization$loglik) <= tol)
+      return(beta)
     previous_loglik = -optimization$loglik
     beta = beta_new
     step = step + 1
   }
+  return(beta)
 }
 
 
@@ -68,8 +83,7 @@ y = cancer_data %>%
   mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
   as.matrix()
 
-beta = matrix(rep(0, ncol(x)))
 
-beta = newton_optimize(x, y, beta = beta)
-func(x, y, beta)
+
+beta = newton_optimize(x, y, tol = 0.0000001)
 ```

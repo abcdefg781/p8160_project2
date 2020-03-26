@@ -14,7 +14,7 @@ func = function(x, y, par) {
   loglik_value = sum(loglik)
   
   # Log-likelihood at betavec
-  p <- expu / (1 + expu)
+  p <- 1 / (1 + exp(-u))
   
   # P(Y_i=1|x_i)
   grad = vector(mode = "numeric", length(par))

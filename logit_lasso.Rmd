@@ -11,47 +11,125 @@ library(tidyverse)
 library(caret)
 library(glmnet)
 library(matlib)
-
+library(MLmetrics)
 ```
 
 # Loading the Loglike, gradient, hess
 ```{r}
 try(source("./loglike_grad_hess_func.R"), silent = TRUE)
+try(source("./CV.R"), silent = TRUE)
 ```
 
-#  
+# soft threshold
 
-
-# Newton Method
 ```{r}
-newton_optimize = function(x, y, beta = NULL, tol = 1, lambda_init = 1, decay_rate = 0.5){
-  if (is.null(beta))
-    beta = matrix(rep(0, ncol(x)))
-  optimization = func(x, y, beta)
+soft_threshold = function(beta, r){
+  return(sign(beta) * pmax(abs(beta) - r, 0))
+}
+```
+
+
+# path-wise coordinate descendent 
+
+```{r}
+path_co_des = function(x, y, lambda, beta, tol = 0.01){
   step = 1
-  previous_loglik = -optimization$loglik
-  while (previous_loglik > tol) {
-    if (step == 12)
-      return(beta)
-    print(paste("step:", step, "  positive loglike loss:", -optimization$loglik))
+  loglike_loss_old = -sum((y * (x %*% beta) - log(1 + exp(x %*% beta))))
+  while (TRUE) {
+    changed = rep(TRUE, ncol(x))
+    for (j in 1:ncol(x)) {
+      p = 1 / (1 + exp(-(x %*% beta)))
     
-    lambda = lambda_init
-    beta_new = beta - lambda * inv(optimization$Hess) %*% optimization$grad
-    optimization = func(x, y, beta_new)
-    while (previous_loglik <= -optimization$loglik) {
-      lambda = lambda * decay_rate
-      beta_new = beta - inv(optimization$Hess) %*% optimization$grad
-      optimization = func(x, y, beta_new)
+      w = p * (1 - p)
+      w[is_null(w)] = 0
+      z = x %*% beta * w + (y - p) 
+      z_j = w * x[, -j] %*% beta[-j]
+      beta_new = sum(x[, j] * (z - z_j)) / (t(w) %*% (x[, j]^2))
+      if (j > 1)
+        beta_new = soft_threshold(beta_new, lambda)
+      #print(beta_new)
+      
+      if (abs(beta_new - beta[j]) < tol) {
+        changed[j] = FALSE
+      }
+      beta[j] = beta_new
     }
-    previous_loglik = -optimization$loglik
-    beta = beta_new
+    #if(step == 2893){
+    #  return(list(p = p, w = w, z = z, z_j = z_j, beta = beta))
+    #}
+    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta))))
+    print(paste("step = ", step, " lambda = ", lambda, " loss: ", loglike_loss))
+    if (loglike_loss_old < loglike_loss)
+      return(beta)
+    
+    if (sum(changed) == 0) {
+      return(beta)
+    }
+    loglike_loss_old = loglike_loss
     step = step + 1
+  }
+}
+```
+
+```{r}
+logit_lasso = function(x, y, parameter, tol = 0.01){
+  lambda = parameter$lambda
+  colmean = colMeans(x)
+  colscale = c()
+  for (i in 1:ncol(x)) {
+    x[, i] = x[, i] - colmean[i]
+    colscale = c(colscale, sqrt(sum(x[, i] * x[, i])))
+    x[, i] = x[, i] / sqrt(sum(x[, i] * x[, i]))
+  }
+  beta = matrix(rep(0, ncol(x) + 1))
+  x = cbind(rep(1, nrow(x)), x)
+ 
+  beta = path_co_des(x, y, lambda, beta)
+  beta_list = c()
+  if (length(lambda) == 1) {
+   
+    beta_list = c(beta_list, beta)
+    return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale))
+  }
+  else{
+    for (k in 1:length(lambda)) {
+      lambda = sort(x, decreasing = TRUE)
+      beta = path_co_des(x, y, lambda[k], beta, tol)
+      beta_list = c(beta_list, beta)
+    }
+    return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale))
   }
 }
 
 
 ```
 
+# prediction
+
+```{r}
+predict = function(model, x){
+  beta = model$beta
+  colmean = model$colmean
+  colscale = model$colscale
+  for (i in 1:ncol(x)) {
+    x[, i] = x[, i] - colmean[i]
+    x[, i] = x[, i] / colscale[i]
+  }
+  x = cbind(rep(1, nrow(x)), x)
+  predict_y = x %*% beta
+  predict_y[predict_y < 0.5] = 0 
+  predict_y[predict_y >= 0.5] = 1
+  return(predict_y)
+}
+```
+
+# cross validation
+
+```{r}
+criterion = function(predict_y, true_y){
+  return(F1_Score(true_y, predict_y))
+} 
+```
 
 # Loading the data
 ```{r}
@@ -64,8 +142,6 @@ y = cancer_data %>%
   mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
   as.matrix()
 
-beta = matrix(rep(0, ncol(x)))
-
-beta = newton_optimize(x, y)
-func(x, y, beta)
+parameters = list(lambda = c(0.001, 0.01, 0.1, 1))
+a = cv(x, y, parameters, model, predict, criterion, n_fold = 5)
 ```
