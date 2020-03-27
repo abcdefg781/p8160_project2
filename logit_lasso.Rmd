@@ -14,12 +14,6 @@ library(matlib)
 library(MLmetrics)
 ```
 
-# Loading the Loglike, gradient, hess
-```{r}
-try(source("./loglike_grad_hess_func.R"), silent = TRUE)
-try(source("./CV.R"), silent = TRUE)
-```
-
 # soft threshold
 
 ```{r}
@@ -34,12 +28,12 @@ soft_threshold = function(beta, r){
 ```{r}
 path_co_des = function(x, y, lambda, beta, tol = 0.01){
   step = 1
-  loglike_loss_old = -sum((y * (x %*% beta) - log(1 + exp(x %*% beta))))
+  loglike_loss_old = -sum((y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
   while (TRUE) {
     changed = rep(TRUE, ncol(x))
+    beta_old = beta
     for (j in 1:ncol(x)) {
       p = 1 / (1 + exp(-(x %*% beta)))
-    
       w = p * (1 - p)
       w[is_null(w)] = 0
       z = x %*% beta * w + (y - p) 
@@ -57,13 +51,13 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
     #if(step == 2893){
     #  return(list(p = p, w = w, z = z, z_j = z_j, beta = beta))
     #}
-    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta))))
+    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
     print(paste("step = ", step, " lambda = ", lambda, " loss: ", loglike_loss))
-    if (loglike_loss_old < loglike_loss)
-      return(beta)
+    if (is.na(loglike_loss) || loglike_loss_old < loglike_loss)
+      return(beta_old)
     
     if (sum(changed) == 0) {
-      return(beta)
+      return(beta_old)
     }
     loglike_loss_old = loglike_loss
     step = step + 1
@@ -71,9 +65,15 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
 }
 ```
 
+
+
+# training model
+
 ```{r}
-logit_lasso = function(x, y, parameter, tol = 0.01){
-  lambda = parameter$lambda
+logit_lasso = function(x, y, lambda, tol = 0.01, warm_start = FALSE, include_zero_lambda = TRUE){
+  if(include_zero_lambda && sum(lambda == 0) == 0) {
+    lambda = c(lambda, 0)
+  }
   colmean = colMeans(x)
   colscale = c()
   for (i in 1:ncol(x)) {
@@ -84,18 +84,22 @@ logit_lasso = function(x, y, parameter, tol = 0.01){
   beta = matrix(rep(0, ncol(x) + 1))
   x = cbind(rep(1, nrow(x)), x)
  
-  beta = path_co_des(x, y, lambda, beta)
-  beta_list = c()
+  beta_list = list()
   if (length(lambda) == 1) {
-   
-    beta_list = c(beta_list, beta)
+    beta = path_co_des(x, y, lambda[1], beta, tol)
+    beta_list[[paste("beta -> lambda:", lambda[1])]] = beta
     return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale))
   }
   else{
+    lambda = sort(lambda, decreasing = TRUE)
     for (k in 1:length(lambda)) {
-      lambda = sort(x, decreasing = TRUE)
-      beta = path_co_des(x, y, lambda[k], beta, tol)
-      beta_list = c(beta_list, beta)
+      if (warm_start)
+        beta = path_co_des(x, y, lambda[k], beta, tol)
+      else{
+        beta = matrix(rep(0, ncol(x)))
+        beta = path_co_des(x, y, lambda[k], beta, tol)
+      }
+      beta_list[[paste("beta -> lambda:", lambda[k])]] = beta
     }
     return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale))
   }
@@ -108,26 +112,80 @@ logit_lasso = function(x, y, parameter, tol = 0.01){
 
 ```{r}
 predict = function(model, x){
-  beta = model$beta
+  beta_list = model$beta
   colmean = model$colmean
   colscale = model$colscale
+  predict_y_list = list()
   for (i in 1:ncol(x)) {
     x[, i] = x[, i] - colmean[i]
     x[, i] = x[, i] / colscale[i]
   }
   x = cbind(rep(1, nrow(x)), x)
-  predict_y = x %*% beta
-  predict_y[predict_y < 0.5] = 0 
-  predict_y[predict_y >= 0.5] = 1
-  return(predict_y)
+  for (i in names(beta_list)) {
+    predict_y = x %*% beta_list[[i]]
+    predict_y[predict_y < 0.5] = 0 
+    predict_y[predict_y >= 0.5] = 1
+    predict_y_list[[i]] = predict_y
+  }
+  
+  return(predict_y_list)
 }
 ```
 
 # cross validation
 
 ```{r}
-criterion = function(predict_y, true_y){
-  return(F1_Score(true_y, predict_y))
+cv = function(x, y, lambda, model, predict, criterion, n_fold = 5, tol = 0.01, warm_start = FALSE){
+  loss_fold = list()
+  for (fold in 0:(n_fold - 1)) {
+    print(paste("fold: ", fold))
+    
+    test_index = ((fold * length(y) / n_fold) + 1):(((fold + 1) * length(y) / n_fold))
+    train_index = (1:length(y))[-test_index]
+    train_x = x[train_index, ]
+    train_y = y[train_index]
+    test_x = x[test_index, ]
+    test_y = y[test_index]
+    
+    
+    train_model = model(train_x, train_y, lambda, tol, warm_start)
+    
+    predict_y = predict(train_model, test_x)
+    
+    test_loss = criterion(predict_y, test_y)
+    
+    loss_fold[[paste(" fold ", fold)]] = test_loss
+    
+  }
+  lambda_lost = list()
+  
+  for (l in names(loss_fold[[paste(" fold ", 0)]])) {
+    lambda_lost[[l]] = loss_fold[[paste(" fold ", 0)]][[l]]
+  }
+  for (l in names(loss_fold[[paste(" fold ", fold)]])) {
+    for (fold in 1:(n_fold - 1)) {
+      lambda_lost[[l]] = lambda_lost[[l]] + loss_fold[[paste(" fold ", fold)]][[l]]
+    }
+    
+    lambda_lost[[l]] = lambda_lost[[l]] / n_fold
+  }
+  return(list(lambda = lambda, loss = lambda_lost))
+}
+
+
+
+```
+
+# criterion to select lambda
+
+```{r}
+criterion = function(predict_y_list, true_y){
+  result = list()
+  for (i in names(predict_y_list)) {
+    predict_y = predict_y_list[[i]]
+    result[[i]] = F1_Score(true_y, predict_y)
+  }
+  return(result)
 } 
 ```
 
@@ -142,6 +200,16 @@ y = cancer_data %>%
   mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
   as.matrix()
 
-parameters = list(lambda = c(0.001, 0.01, 0.1, 1))
-a = cv(x, y, parameters, model, predict, criterion, n_fold = 5)
+lambda = c(0.001, 0.01, 0.02, 0.05)
+lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, n_fold = 5, tol = 0.01, warm_start = T)
+
+lambda_result
+
+
+train_model = logit_lasso(x, y, lambda = 0.01, tol = 0.01, include_zero_lambda = FALSE)
+
+
+predict_result = predict(train_model, x)
+
+predict_result
 ```
