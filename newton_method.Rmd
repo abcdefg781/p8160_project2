@@ -11,60 +11,97 @@ library(tidyverse)
 library(caret)
 library(glmnet)
 library(matlib)
-
+library(glmnet)
 ```
 
 # Loading the Loglike, gradient, hess
 ```{r}
+# this function is to use the function in .R file
 try(source("./loglike_grad_hess_func.R"), silent = TRUE)
 ```
 
 
 
 # Newton Method
+
+input:
+x: predictors without intercept
+y: response variables
+beta: if not specified, 0 will be set to all coefficients
+tol: the threshold to end up the function if the difference between loglike function at 2 adjacent steps below this value.
+lambda_init: the initial lambda to control the number of each step and lambda will change in halving process.
+decay_rate: the ratio of decayed lambda to lambda at last step in havling process.
+
+output:
+beta: a vector of coeffients
+
 ```{r}
 newton_optimize = function(x, y, beta = NULL, tol = 0.001, lambda_init = 1, decay_rate = 0.5){
-  if (is.null(beta))
-    beta = matrix(rep(0, ncol(x) + 1))
+  
+  # add the intercept
   x = cbind(rep(1, nrow(x)), x)
+  
+  # if beta is not specified, set all initial coefficients to 0
+  if (is.null(beta))
+    beta = matrix(rep(0, ncol(x)))
+  
+  # calculate the initial gradient, Hessian matrix and negative loglike funtion
   optimization = func(x, y, beta)
   step = 1
   previous_loglik = -optimization$loglik
 
+  # start the interations to optimize the beta
   while (TRUE) {
-    
-    print(paste("step:", step, "  positive loglike loss:", -optimization$loglik))
+    print(paste("step:", step, "  negative loglike loss:", -optimization$loglik))
    
+    # set initial lambda at this step equals to the parameters, this variable will change in havling step
     lambda = lambda_init
     
+    # since there maybe some issues when calculate new beta, so we use try-catch sentence. If some errors ocurr, the beta will be kept as the beta at last step.
     beta_new <- tryCatch({
-        beta - lambda * inv(optimization$Hess) %*% optimization$grad
+        beta - lambda * inv(optimization$Hess) %*% optimization$grad # calculate new beta, if no errors, the result will be given to variable "beta_new" 
       }, error = function(err) {return(beta)})
 
-
     
-    
-   
+    # calculate gradient, Hessian and loglike   
     optimization = func(x, y, beta_new)
    
     
-   
+    # havling steps start only when it optimizes at opposite direction.
+    # if it optimizes at opposite direction, lambda will be havled to make the step smaller. 
     while (previous_loglik <= -optimization$loglik) {
-      lambda = lambda * decay_rate
+      lambda = lambda * decay_rate # lambda decay
       
+      # same reason to use try-catch
+      # but if errors occur, although beta keeps, the lambda will be havled at next step, makes the result different.
       beta_new <- tryCatch({
         beta - lambda * inv(optimization$Hess) %*% optimization$grad
       }, error = function(err) {return(beta)})
       
-      
+      # optimize by decayed lambda
       optimization = func(x, y, beta_new)
+      
+      # if the optimized differences are too small, end up the function and return beta. 
+      if ((previous_loglik - -optimization$loglik) <= tol)
+        return(beta)
     }
+    
+    # if the differences calculated from normal calculation or havling steps are too small, end up the function and return beta. 
     if (abs(previous_loglik - -optimization$loglik) <= tol)
       return(beta)
+    
+    # save the negative loglike value at this step and will be used as previous loglike value at next step.
     previous_loglik = -optimization$loglik
-    beta = beta_new
+    
+    # if the function is not ended up, then the new beta is valid. save it.
+    beta = beta_new 
+    
     step = step + 1
   }
+  
+  # so the loop will be ended up by 2 conditions.
+  # 1. the differences calculated by havling steps are too small.
+  # 2. the differences calculated by normal optimization are too small.
   return(beta)
 }
 
@@ -72,18 +109,29 @@ newton_optimize = function(x, y, beta = NULL, tol = 0.001, lambda_init = 1, deca
 ```
 
 
-# Loading the data
+# Loading the data and run function
+
+We will add the intercept in function "newton_optimize" to keep the original data.
+
 ```{r}
+# read data
 cancer_data = read.csv("./breast-cancer.csv")
 
+# make the predictors, and the intercept will be added in function "newton_optimize" instead of here.
 x = cancer_data %>% select(-id, -diagnosis) %>% as.matrix()
 
+# make the response variables
 y = cancer_data %>% 
   select(diagnosis) %>% 
   mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
   as.matrix()
 
 
+# calculate beta_hat by newton method 
+beta = newton_optimize(x, y, tol = 0.01)
 
-beta = newton_optimize(x, y, tol = 0.0000001)
+
+# check the data in glm
+model = glm(y ~ x, family = "binomial")
+model$coefficients
 ```
