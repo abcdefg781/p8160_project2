@@ -25,40 +25,66 @@ soft_threshold = function(beta, r){
 
 # path-wise coordinate descendent 
 
+this function is used to calculate beta by coordinate descendent, given a specific lambda and an initial beta vector. Since this function has no function to add the intercept and standardize data, please do not use the function directly. Try to use function "logit_lasso" instead.
+
 ```{r}
 path_co_des = function(x, y, lambda, beta, tol = 0.01){
-  step = 1
+  
+  # calculate the initial loglike loss
   loglike_loss_old = -sum((y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
+  
+  step = 1
+  
+  # start to optimize iteratively
   while (TRUE) {
+    
+    # use a logical vector to denote the differences of each beta, if all the differences for beta are too small, then the vector "changed" will be all FALSE
     changed = rep(TRUE, ncol(x))
+    
+    # save the beta at last step. If some errors ocurr, we will return the beta we get at last step.
     beta_old = beta
+    
+    # coordinate descendent
     for (j in 1:ncol(x)) {
+      
+      # the formula is shown in lecture note
       p = 1 / (1 + exp(-(x %*% beta)))
       w = p * (1 - p)
-      w[is_null(w)] = 0
-      z = x %*% beta * w + (y - p) 
+      w[is_null(w)] = 0 # since the exp function may lead to infinity, let the NaN in w equals to 0
+      z = x %*% beta * w + (y - p) # make a few changes in formula compared with that in lecture note to avoid divide by 0 error due to w = 0
       z_j = w * x[, -j] %*% beta[-j]
       beta_new = sum(x[, j] * (z - z_j)) / (t(w) %*% (x[, j]^2))
-      if (j > 1)
+      if (j > 1) # if beta is not intercept, use soft threshold
         beta_new = soft_threshold(beta_new, lambda)
-      #print(beta_new)
       
+      # if beta changes very little, set the changed flag to FALSE, if all beta changed flags are FALSE at each turn, end up the function and return beta. 
       if (abs(beta_new - beta[j]) < tol) {
         changed[j] = FALSE
       }
+      
+      # save the new beta
       beta[j] = beta_new
     }
-    #if(step == 2893){
-    #  return(list(p = p, w = w, z = z, z_j = z_j, beta = beta))
-    #}
+    
+    ### coordinate descendent ends at this turn ###
+    
+    
+    # calculate loglike loss after all the coeffient have been updated at this turn
     loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
+
+    
     print(paste("step = ", step, " lambda = ", lambda, " loss: ", loglike_loss))
+    
+    # if some errors ocurr in loglike loss or this function optimizes at opposite direction, end up the function, and return the beta at previous step.
     if (is.na(loglike_loss) || loglike_loss_old < loglike_loss)
       return(beta_old)
     
+    # if all the changed flags equal to FALSE, end up the function, and return the beta at previous step.
     if (sum(changed) == 0) {
       return(beta_old)
     }
+    
+    # save loglike value at the current step. It will be used to compare at next step.
     loglike_loss_old = loglike_loss
     step = step + 1
   }
@@ -69,30 +95,67 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
 
 # training model
 
+This function is used as an interface to calculate the logit lasso model and sort the path of lambda. In this funtion, the original data need to be put in and intercept, standardization will be calculated automatically.
+
+
+
+Input:
+
+* x: original predictors without intercept and standarization
+
+* y: response variables
+
+* lambda: a scale or a vector of lambdas. The order can be arbitrary. This function will sort the descending order automatically. If parameter "include_zero_lambda" is TRUE, a zero lambda will append.
+
+* tol: threshold to put in function "path_co_des" and does not use in this function.
+
+* warm_start: If lambda is a vector will more than 1 element, the initial beta of each lambda will be the same as the result obtained with last lambda. If "warm_start" is FALSE, the initial beta will be 0 of any beta. 
+
+* include_zero_lambda: If this parameter is TRUE, a zero lambda will be appended to parameter "lambda". And lambda equals to 0 means no regularization.
+
+
 ```{r}
 logit_lasso = function(x, y, lambda, tol = 0.01, warm_start = FALSE, include_zero_lambda = TRUE){
-  if(include_zero_lambda && sum(lambda == 0) == 0) {
+  
+  # if parameter "include_zero_lambda" equals to TRUE and no zero lambda in paramter "lambda". Append zero lambda.
+  if (include_zero_lambda && sum(lambda == 0) == 0) {
     lambda = c(lambda, 0)
   }
+  
+  
+  
+  # this part is used to center the predictors and make each column unit which means the length of all column vectors equals to 1. 
+  
+  # also, due to the same sample space of training data and test data, the test data will be calculated by training data scale. So the scale will be returned at the end of this function.
   colmean = colMeans(x)
   colscale = c()
-  for (i in 1:ncol(x)) {
-    x[, i] = x[, i] - colmean[i]
-    colscale = c(colscale, sqrt(sum(x[, i] * x[, i])))
-    x[, i] = x[, i] / sqrt(sum(x[, i] * x[, i]))
+  for (i in 1:ncol(x)) { # standarize each columns
+    x[, i] = x[, i] - colmean[i] # centered
+    colscale = c(colscale, sqrt(sum(x[, i] * x[, i]))) # save scale
+    x[, i] = x[, i] / sqrt(sum(x[, i] * x[, i])) # make column unit
   }
-  beta = matrix(rep(0, ncol(x) + 1))
+  
+  # add intercept and initialize beta as all 0s
   x = cbind(rep(1, nrow(x)), x)
- 
+  beta = matrix(rep(0, ncol(x)))
+  
+  
+  # in this part, we use path of lambda to calculate a list of beta with descending beta
   beta_list = list()
+  
+  # if "lambda" is a scale:
   if (length(lambda) == 1) {
     beta = path_co_des(x, y, lambda[1], beta, tol)
     beta_list[[paste("beta -> lambda:", lambda[1])]] = beta
-    return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale))
+    
+    # return "lambda", "beta_list", center factor "colmean", unitization factor "colscale"
+    return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale)) 
   }
+  
+  # if "lambda" is a vector:
   else{
-    lambda = sort(lambda, decreasing = TRUE)
-    for (k in 1:length(lambda)) {
+    lambda = sort(lambda, decreasing = TRUE) # sort "lambda" by decreasing order
+    for (k in 1:length(lambda)) { # for each lambda, calculate the beta
       if (warm_start)
         beta = path_co_des(x, y, lambda[k], beta, tol)
       else{
@@ -101,7 +164,10 @@ logit_lasso = function(x, y, lambda, tol = 0.01, warm_start = FALSE, include_zer
       }
       beta_list[[paste("beta -> lambda:", lambda[k])]] = beta
     }
+    
+    # return "lambda", "beta_list", center factor "colmean", unitization factor "colscale"
     return(list(lambda = lambda, beta = beta_list, colmean = colmean, colscale = colscale))
+    
   }
 }
 
@@ -110,8 +176,18 @@ logit_lasso = function(x, y, lambda, tol = 0.01, warm_start = FALSE, include_zer
 
 # prediction
 
+this function is used to predict response variable given the model from function "logit_lasso" and orginal predictors.
+
+input:
+
+* model: the result list from function "logit_lasso" consist of lambda list "lambda", beta list "beta_list", center factor "colmean", unitization factor "colscale". If beta list "beta_list" consist of different coefficients from different lambda, then for each vector of coefficients, each vector of predicting response variable will be returned, to form a list of predicting response variable.
+
+* x: the original predictor variables.
+
 ```{r}
 predict = function(model, x){
+  
+  # use the scale factors for training data to standarize predicting data
   beta_list = model$beta
   colmean = model$colmean
   colscale = model$colscale
@@ -120,9 +196,14 @@ predict = function(model, x){
     x[, i] = x[, i] - colmean[i]
     x[, i] = x[, i] / colscale[i]
   }
+  
+  # add intercept
   x = cbind(rep(1, nrow(x)), x)
+  
+  # calculate the predicting reponse variable for each beta (or lambda)
   for (i in names(beta_list)) {
-    predict_y = x %*% beta_list[[i]]
+    # "i" is the value of lambda
+    predict_y = 1 / (1 + exp(-x %*% beta_list[[i]]))
     predict_y[predict_y < 0.5] = 0 
     predict_y[predict_y >= 0.5] = 1
     predict_y_list[[i]] = predict_y
@@ -132,14 +213,78 @@ predict = function(model, x){
 }
 ```
 
-# cross validation
+# criterion to select lambda
+
+This function is used to calculate the performance given predict_y and true_y. If predict_y_list is a list of predict_ys. Then for each predict_y, a performance score will be given, to form a list of scores.
+
+
+input:
+
+* true_y: dimension(1 * #samples), true response variable.
+
+* predict_y_list: dimension(#lambda * #samples), a list of predict_ys , for each predict_y, performance score will be calculate.
+
+* score: a function to calculate the performance score for a model, given  predict_y and  true_y
 
 ```{r}
-cv = function(x, y, lambda, model, predict, criterion, n_fold = 5, tol = 0.01, warm_start = FALSE){
+criterion = function(true_y, predict_y_list, score){
+  result = list()
+  for (i in names(predict_y_list)) {
+    predict_y = predict_y_list[[i]]
+    result[[i]] = score(true_y, predict_y)
+  }
+  return(result)
+} 
+
+#### a score function example --- Accuracy:
+
+accuracy = function(true_y, predict_y){
+  return(sum(true_y == predict_y) / length(true_y))
+}
+```
+
+
+# cross validation
+
+This function is used to calculate different performance for different lambda by cross validationl. At each fold, this function will call functions "logit_lasso", "predict" and "criterion" to calculate the cv performance for each lambda.
+
+We first split the data to form training data and test data. At each fold, we calculate the predicting performance for each lambda. Also since the model is calculated by pair-wise coordinate descending, the warm start can be exploited at each fold. After the calculation of the final fold, the performances at all folds will be averaged for each lambda.
+
+
+Input:
+
+* x: orginal predictors. It will be split into training data and test data at each fold.
+
+* y: response variables. It will be split into training data and test data at each fold.
+
+* lambda: lambda list
+
+* model: a function to train model given x, y and lambda. In this file, "logit_lasso" will be put as this parameter.
+
+* predict: a function to predict response variable given predictors. In this file, funtion "predict" will be put as this parameter.
+
+* criterion: a function to calculate the performance given predict_y and true_y. In this file, funtion "criterion" will be put as this parameter.
+
+* score: the score function put in criterion function. Function "accuracy" is provided, other score function can be written by code runner.
+
+* n_fold: number of fold to cross validate.
+
+* tol: threshold used in function "logit_lasso"
+
+* warm_start: parameter used in function "logit_lasso". If warm_start = TRUE, at each fold, the coefficients of lambdas will be calculated sequently.
+
+
+```{r}
+cv = function(x, y, lambda, model, predict, criterion, score,  n_fold = 5, tol = 0.01, warm_start = FALSE){
+  
+  # collect the performance score at each fold for each lambda
   loss_fold = list()
+  
+  # cross validation
   for (fold in 0:(n_fold - 1)) {
-    print(paste("fold: ", fold))
+    print(paste("fold: ", fold + 1))
     
+    # select the training  samples and test samples.
     test_index = ((fold * length(y) / n_fold) + 1):(((fold + 1) * length(y) / n_fold))
     train_index = (1:length(y))[-test_index]
     train_x = x[train_index, ]
@@ -147,16 +292,25 @@ cv = function(x, y, lambda, model, predict, criterion, n_fold = 5, tol = 0.01, w
     test_x = x[test_index, ]
     test_y = y[test_index]
     
-    
+    # train model
     train_model = model(train_x, train_y, lambda, tol, warm_start)
     
+    # predict response variable
     predict_y = predict(train_model, test_x)
     
-    test_loss = criterion(predict_y, test_y)
+    # calculate the performance score
+    test_loss = criterion(test_y, predict_y, score)
     
+    # add the score
     loss_fold[[paste(" fold ", fold)]] = test_loss
     
   }
+  
+  
+  
+  
+  # for each lambda, calculate an average performance score
+  
   lambda_lost = list()
   
   for (l in names(loss_fold[[paste(" fold ", 0)]])) {
@@ -169,28 +323,20 @@ cv = function(x, y, lambda, model, predict, criterion, n_fold = 5, tol = 0.01, w
     
     lambda_lost[[l]] = lambda_lost[[l]] / n_fold
   }
-  return(list(lambda = lambda, loss = lambda_lost))
+  
+  # return lambda list and performance score
+  return(list(lambda = lambda, performance = lambda_lost))
 }
 
-
-
 ```
 
-# criterion to select lambda
+
+
+# Loading the data and run main code
 
 ```{r}
-criterion = function(predict_y_list, true_y){
-  result = list()
-  for (i in names(predict_y_list)) {
-    predict_y = predict_y_list[[i]]
-    result[[i]] = F1_Score(true_y, predict_y)
-  }
-  return(result)
-} 
-```
 
-# Loading the data
-```{r}
+# read data
 cancer_data = read.csv("./breast-cancer.csv")
 
 x = cancer_data %>% select(-id, -diagnosis) %>% as.matrix()
@@ -200,14 +346,30 @@ y = cancer_data %>%
   mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
   as.matrix()
 
-lambda = c(0.001, 0.01, 0.02, 0.05)
-lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, n_fold = 5, tol = 0.01, warm_start = T)
 
+
+
+# cross validation by a vector of lambda
+
+lambda = exp(seq(-10, 10, 0.01)) # rescale the log(lambda)
+
+# here we can write another score function and replace function "accuracy". The way to write can be found at the definition of function "criterion"
+
+# in cv, standard mode cannot use warm start. But here a option is provided for users.
+lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, accuracy, n_fold = 5, tol = 0.01, warm_start = T)
+
+# the result is a list consist of lambda list "lambda" and scores for each lambda "performance"
 lambda_result
 
 
+
+# after select the best model by cv, we can use the best lambda here, and retrain a model
+# this is an example to train a model and get the beta coefficients, and predicting response variable.
+
 train_model = logit_lasso(x, y, lambda = 0.01, tol = 0.01, include_zero_lambda = FALSE)
 
+# the model consist of beta coefficients and other necessary variables for model.
+train_model
 
 predict_result = predict(train_model, x)
 
