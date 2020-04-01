@@ -11,6 +11,7 @@ library(tidyverse)
 library(caret)
 library(glmnet)
 library(MLmetrics)
+set.seed(100)
 ```
 
 # soft threshold
