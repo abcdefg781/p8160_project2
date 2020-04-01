@@ -38,3 +38,28 @@ predict_fcn = function(x, y, df, test_df){
 }
 ```
 
+# Comparing logistic lasso data with actual data
+```{r}
+rmse = function(x, y) {
+  actual_diagnosis = cancer_data$diagnosis 
+  actual_diagnosis = as.data.frame(recode(actual_diagnosis, "B" = 0, "M" = 1))
+  
+  i = 1
+  lambda_vec = exp(seq(-5, 0, 0.05))
+  rmse_vec = rep(0, length(lambda_vec))
+  while (i <= length(lambda_vec)) {
+    lasso_lambda = logit_lasso(x, y, lambda_vec[i], tol = 0.01, include_zero_lambda = FALSE)
+    predict_result = predict(lasso_lambda, x)
+    rmse = (sum(actual_diagnosis - predict_result))^2 / 569
+    rmse_vec[i] = rmse
+    i = i + 1
+  }
+  return(rmse_vec)
+}
+
+rmse_vector = rmse(x, y)
+lambda_vector = exp(seq(-5, 0, 0.05))
+
+plot(lambda_vector, rmse_vector)
+```
+
