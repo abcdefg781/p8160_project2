@@ -33,7 +33,7 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
   loglike_loss_old = -sum((y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
   
   step = 1
-  
+  #wrong_direction = 0
   # start to optimize iteratively
   while (TRUE) {
     
@@ -69,17 +69,25 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
     
     
     # calculate loglike loss after all the coeffient have been updated at this turn
-    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
+    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta)))) 
 
     
     print(paste("step = ", step, " lambda = ", lambda, " loss: ", loglike_loss))
     
     # if some errors ocurr in loglike loss or this function optimizes at opposite direction, end up the function, and return the beta at previous step.
-    if (is.na(loglike_loss) || loglike_loss_old < loglike_loss)
+    if (is.na(loglike_loss) || loglike_loss_old < loglike_loss){
+      print("error end")
       return(beta_old)
-    
+    }
+   
+    if (abs(loglike_loss_old - loglike_loss) < tol){
+      print("normal end")
+      return(beta_old)
+    }
+      
     # if all the changed flags equal to FALSE, end up the function, and return the beta at previous step.
     if (sum(changed) == 0) {
+      print("normal end")
       return(beta_old)
     }
     
@@ -340,6 +348,9 @@ cancer_data = read.csv("./breast-cancer.csv")
 
 x = cancer_data %>% select(-id, -diagnosis) %>% as.matrix()
 
+x = x + 0.00000000001
+x = log(x)
+
 y = cancer_data %>% 
   select(diagnosis) %>% 
   mutate(diagnosis = as.integer(diagnosis) - 1) %>% 
@@ -355,24 +366,24 @@ lambda = exp(seq(-10, 10, 0.01)) # rescale the log(lambda)
 # here we can write another score function and replace function "accuracy". The way to write can be found at the definition of function "criterion"
 
 # in cv, standard mode cannot use warm start. But here a option is provided for users.
-lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, accuracy, n_fold = 5, tol = 0.01, warm_start = T)
+#lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, accuracy, n_fold = 5, tol = 0.01, warm_start = T)
 
 # the result is a list consist of lambda list "lambda" and scores for each lambda "performance"
-lambda_result
+#lambda_result
 
 
 
 # after select the best model by cv, we can use the best lambda here, and retrain a model
 # this is an example to train a model and get the beta coefficients, and predicting response variable.
 
-train_model = logit_lasso(x, y, lambda = 0.01, tol = 0.01, include_zero_lambda = FALSE)
+#train_model = logit_lasso(x, y, lambda = 0.01, tol = 0.01, include_zero_lambda = FALSE)
 
 # the model consist of beta coefficients and other necessary variables for model.
-train_model
+#train_model
 
-predict_result = predict(train_model, x)
+#predict_result = predict(train_model, x)
 
-predict_result
+#predict_result
 ```
 
 
@@ -386,7 +397,7 @@ rmse = function(x, y) {
   lambda_vec = exp(seq(-5, 0, 0.05))
   rmse_vec = rep(0, length(lambda_vec))
   while (i <= length(lambda_vec)) {
-    lasso_lambda = logit_lasso(x, y, lambda_vec[i], tol = 0.01, include_zero_lambda = FALSE)
+    lasso_lambda = logit_lasso(x, y, lambda_vec[i], include_zero_lambda = FALSE, tol = 0.01)
     predict_result = predict(lasso_lambda, x)
     rmse = (sum(actual_diagnosis - predict_result))^2 / 569
     rmse_vec[i] = rmse
