@@ -389,27 +389,42 @@ lambda = exp(seq(-10, 10, 0.01)) # rescale the log(lambda)
 
 
 # Comparing logistic lasso data with actual data
+# Also show how coefficients converge to 0 when lambda increases 
 ```{r}
-rmse = function(x, y) {
+rmse = function(x, y, lambda_vec) {
   actual_diagnosis = cancer_data$diagnosis 
   actual_diagnosis = as.data.frame(recode(actual_diagnosis, "B" = 0, "M" = 1))
   
   i = 1
-  lambda_vec = exp(seq(-5, 0, 0.05))
+ 
   rmse_vec = rep(0, length(lambda_vec))
+  coefs = NULL
   while (i <= length(lambda_vec)) {
     lasso_lambda = logit_lasso(x, y, lambda_vec[i], include_zero_lambda = FALSE, tol = 0.01)
+    if (is.null(coefs)){
+      coefs = data.frame(lasso_lambda$beta)
+      colnames(coefs) = lambda_vec[i]
+    }
+    else{
+      new_coef = data.frame(lasso_lambda$beta)
+      colnames(new_coef) = lambda_vec[i]
+      coefs = bind_cols(coefs,new_coef)
+    }
     predict_result = predict(lasso_lambda, x)
     rmse = (sum(actual_diagnosis - predict_result))^2 / 569
     rmse_vec[i] = rmse
     i = i + 1
   }
-  return(rmse_vec)
+  coefs = data.frame(t(coefs)) %>% gather(paste("X", 1:(ncol(x)+1), sep=""), key=coef.id, value = beta)
+  coefs$lambda = rep(lambda_vec, (ncol(x)+1))
+  return(list(rmse_vec=rmse_vec, coefs = coefs))
 }
 
-rmse_vector = rmse(x, y)
-lambda_vector = exp(seq(-5, 0, 0.05))
+lambda_vector = exp(seq(-5, 10, 0.5))
+rmse_vector = rmse(x, y, lambda_vector)
 
-plot(lambda_vector, rmse_vector)
+
+ggplot(rmse_vector$coefs, aes(x=log(lambda), y = beta, color = coef.id)) + geom_line()
+plot(lambda_vector, rmse_vector$rmse_vec)
 ```
 
