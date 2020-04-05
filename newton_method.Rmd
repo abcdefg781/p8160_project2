@@ -108,6 +108,19 @@ newton_optimize = function(x, y, beta = NULL, tol = 0.001, lambda_init = 1, deca
 
 ```
 
+# Prediction
+
+```{r}
+predict = function(beta, x){
+  x = cbind(rep(1, nrow(x)), x)
+  predict_y = 1 / (1 + exp(-x %*% beta))
+  predict_y[predict_y < 0.5] = 0 
+  predict_y[predict_y >= 0.5] = 1
+  return(predict_y)
+}
+  
+
+```
 
 # Loading the data and run function
 
@@ -130,6 +143,8 @@ y = cancer_data %>%
 # calculate beta_hat by newton method 
 beta = newton_optimize(x, y, tol = 0.01)
 
+# predict
+predict(beta, x)
 
 # check the data in glm
 model = glm(y ~ x, family = "binomial")
