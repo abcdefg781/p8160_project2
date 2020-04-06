@@ -150,3 +150,48 @@ predict(beta, x)
 model = glm(y ~ x, family = "binomial")
 model$coefficients
 ```
+
+# Training and Tests with CV
+
+```{r}
+cv2 = function(data, k = 10) {
+  # Create folds for N-fold cv
+  flds = createFolds(data$diagnosis, k = k, list = T)
+  
+  # Initialize RMSE
+  rmse = rep(NA, k - 1)
+  
+  # Loop through each fold
+  for (fold in 1:(length(flds) - 1)) {
+    # Split training and test
+    test = data[flds[[fold]],]
+    train = data[-flds[[fold]],]
+    
+    # Prepare data for logistic regression
+    x_train = train %>% select(-id, -diagnosis) %>% as.matrix()
+    y_train = train %>% 
+      select(diagnosis) %>% 
+      mutate(diagnosis = as.integer(as.factor(diagnosis)) - 1) %>% 
+      as.matrix()
+    x_test = test %>% select(-id, -diagnosis) %>% as.matrix()
+    y_test = test %>% 
+      select(diagnosis) %>% 
+      mutate(diagnosis = as.integer(as.factor(diagnosis)) - 1) %>% 
+      as.matrix()
+    
+    # Train model
+    train_model = newton_optimize(x_train, y_train, tol = 0.01)
+    predict_result = predict(train_model, x_test)
+    
+    # Calculate RMSE
+    error = predict_result[[1]] - y_test
+    rmse[fold] = sqrt(mean(error^2))
+  }
+  return(rmse)
+}
+
+set.seed(12345)
+rmse = mean(cv2(data, k = 10))
+# RMSE is 0.7918
+```
+

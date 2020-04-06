@@ -375,3 +375,50 @@ predict_result = predict(train_model, x)
 
 predict_result
 ```
+
+## CV to compare LASSO with Newton Raphson Logistic Regression
+
+```{r}
+cv2 = function(data, k = 10) {
+  # Create folds for N-fold cv
+  flds = createFolds(data$diagnosis, k = k, list = T)
+  
+  # Initialize RMSE
+  rmse = rep(NA, k - 1)
+  
+  # Loop through each fold
+  for (fold in 1:(length(flds) - 1)) {
+    # Split training and test
+    test = data[flds[[fold]],]
+    train = data[-flds[[fold]],]
+    
+    # Prepare data for logistic lasso
+    x_train = train %>% select(-id, -diagnosis) %>% as.matrix()
+    y_train = train %>% 
+      select(diagnosis) %>% 
+      mutate(diagnosis = as.integer(as.factor(diagnosis)) - 1) %>% 
+      as.matrix()
+    x_test = test %>% select(-id, -diagnosis) %>% as.matrix()
+    y_test = test %>% 
+      select(diagnosis) %>% 
+      mutate(diagnosis = as.integer(as.factor(diagnosis)) - 1) %>% 
+      as.matrix()
+    
+    # Train model
+    train_model = logit_lasso(x_train, y_train, 
+                              lambda = 0.01, tol = 0.01, warm_start = TRUE,
+                              include_zero_lambda = FALSE)
+    predict_result = predict(train_model, x_test)
+    
+    # Calculate RMSE
+    error = predict_result[[1]] - y_test
+    rmse[fold] = sqrt(mean(error^2))
+  }
+  return(rmse)
+}
+
+set.seed(12345)
+rmse = mean(cv2(data, k = 10))
+# rmse is 0.154
+```
+
