@@ -421,7 +421,7 @@ rmse = function(x, y, lambda_vec) {
   return(list(rmse_vec=rmse_vec, coefs = coefs))
 }
 
-lambda_vector = exp(seq(-5, 10, 0.5))
+lambda_vector = exp(seq(-5, 5, 0.5))
 rmse_vector = rmse(x, y, lambda_vector)
 
 colfunc = colorRampPalette(c("red","yellow","springgreen","royalblue"))
