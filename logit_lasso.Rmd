@@ -53,10 +53,10 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
       w[is_null(w)] = 0 # since the exp function may lead to infinity, let the NaN in w equals to 0
       z = x %*% beta * w + (y - p) # make a few changes in formula compared with that in lecture note to avoid divide by 0 error due to w = 0
       z_j = w * x[, -j] %*% beta[-j]
-      beta_new = sum(x[, j] * (z - z_j)) / (t(w) %*% (x[, j]^2))
+      beta_new = sum(x[, j] * (z - z_j))
       if (j > 1) # if beta is not intercept, use soft threshold
         beta_new = soft_threshold(beta_new, lambda)
-      
+      beta_new = beta_new / (t(w) %*% (x[, j]^2))
       # if beta changes very little, set the changed flag to FALSE, if all beta changed flags are FALSE at each turn, end up the function and return beta. 
       if (abs(beta_new - beta[j]) < tol) {
         changed[j] = FALSE
