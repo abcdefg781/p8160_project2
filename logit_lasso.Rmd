@@ -383,8 +383,10 @@ cv2 = function(data, k = 10) {
   # Create folds for N-fold cv
   flds = createFolds(data$diagnosis, k = k, list = T)
   
-  # Initialize RMSE
+  # Initialize fit statistics
   rmse = rep(NA, k - 1)
+  accuracy = rep(NA, k - 1)
+  auc = rep(NA, k - 1)
   
   # Loop through each fold
   for (fold in 1:(length(flds) - 1)) {
@@ -410,15 +412,32 @@ cv2 = function(data, k = 10) {
                               include_zero_lambda = FALSE)
     predict_result = predict(train_model, x_test)
     
-    # Calculate RMSE
-    error = predict_result[[1]] - y_test
+    # Calculate RMSE 
+    error = c(predict_result[[1]]) - y_test
     rmse[fold] = sqrt(mean(error^2))
+    
+    # Calculate Accuracy 
+    tp = sum(ifelse(c(predict_result[[1]]) == 1 & y_test == 1, 1, 0))
+    tn = sum(ifelse(c(predict_result[[1]]) == 0 & y_test == 0, 1, 0))
+    fp = sum(ifelse(c(predict_result[[1]]) == 1 & y_test == 0, 1, 0))
+    fn = sum(ifelse(c(predict_result[[1]]) == 0 & y_test == 1, 1, 0))
+    accuracy[fold] = (tp + tn) / length(y_test)
+    
+    # Calculate AUC
+    pred = prediction(c(predict_result[[1]]), y_test)
+    auc_perf = performance(pred, measure = "auc")
+    auc[fold] = auc_perf@y.values[[1]]
   }
-  return(rmse)
+  return(list("RMSE" = rmse, "Accuracy" = accuracy, "AUC" = auc))
 }
 
 set.seed(12345)
-rmse = mean(cv2(data, k = 10))
-# rmse is 0.154
+fit_stats = cv2(data, k = 10)
+rmse = mean(fit_stats$RMSE)
+# RMSE is 0.1567
+acc = mean(fit_stats$Accuracy)
+# Accuracy is 97.1%
+auc = mean(fit_stats$AUC)
+# AUC = 0.966
 ```
 
