@@ -411,7 +411,7 @@ rmse = function(x, y, lambda_vec) {
       coefs = bind_cols(coefs,new_coef)
     }
     predict_result = predict(lasso_lambda, x)
-    rmse = (sum(actual_diagnosis - predict_result))^2 / 569
+    rmse= sqrt(sum((actual_diagnosis - predict_result)^2)/ 569)
     rmse_vec[i] = rmse
     i = i + 1
   }
@@ -421,14 +421,16 @@ rmse = function(x, y, lambda_vec) {
   return(list(rmse_vec=rmse_vec, coefs = coefs))
 }
 
-lambda_vector = exp(seq(-5, 0, 0.5))
+lambda_vector = seq(-10, 10, 0.1)
 rmse_vector = rmse(x, y, lambda_vector)
 
 colfunc = colorRampPalette(c("red","yellow","springgreen","royalblue"))
-ggplot(rmse_vector$coefs, aes(x=log(lambda), y = beta, color = coef.id)) + geom_line() +
-  scale_colour_manual(labels = c("intercept", colnames(x)), 
-                      values = colfunc(31)) +
-  theme(legend.position="bottom")
-plot(lambda_vector, rmse_vector$rmse_vec)
+coef_plot = ggplot(rmse_vector$coefs, aes(x=log(lambda), y = beta, color = coef.id)) + 
+  geom_line() + scale_colour_manual(labels = c("intercept", colnames(x)), 
+  values = colfunc(31)) + theme(legend.position="bottom")
+
+coef_plot
+
+plot(lambda_vector, rmse_vector$rmse_vec, xlab = "lambda", ylab = "RMSE")
 ```
 
