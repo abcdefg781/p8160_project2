@@ -416,7 +416,7 @@ rmse = function(x, y, lambda_vec) {
       coefs = bind_cols(coefs,new_coef)
     }
     predict_result = predict(lasso_lambda, x)
-    rmse = (sum(actual_diagnosis - predict_result))^2 / 569
+    rmse = sqrt(sum((actual_diagnosis - predict_result) ^ 2) / 569)
     rmse_vec[i] = rmse
     i = i + 1
   }
