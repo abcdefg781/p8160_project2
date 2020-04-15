@@ -57,6 +57,7 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
       if (j > 1) # if beta is not intercept, use soft threshold
         beta_new = soft_threshold(beta_new, lambda)
       beta_new = beta_new / (t(w) %*% (x[, j]^2))
+      
       # if beta changes very little, set the changed flag to FALSE, if all beta changed flags are FALSE at each turn, end up the function and return beta. 
       if (abs(beta_new - beta[j]) < tol) {
         changed[j] = FALSE
@@ -253,7 +254,6 @@ accuracy = function(true_y, predict_y){
 rmse_score = function(true_y, predict_y){
   return(sqrt(sum((true_y - predict_y) ^ 2) / length(true_y)))
 }
-
 ```
 
 
@@ -372,7 +372,7 @@ lambda = exp(seq(-10, 10, 0.01)) # rescale the log(lambda)
 # here we can write another score function and replace function "accuracy". The way to write can be found at the definition of function "criterion"
 
 # in cv, standard mode cannot use warm start. But here a option is provided for users.
-#lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, accuracy, n_fold = 5, tol = 0.01, warm_start = T)
+lambda_result = cv(x, y, lambda, logit_lasso, predict, criterion, accuracy, n_fold = 5, tol = 0.01, warm_start = T)
 
 # the result is a list consist of lambda list "lambda" and scores for each lambda "performance"
 #lambda_result
@@ -416,7 +416,7 @@ rmse = function(x, y, lambda_vec) {
       coefs = bind_cols(coefs,new_coef)
     }
     predict_result = predict(lasso_lambda, x)
-    rmse= sqrt(sum((actual_diagnosis - predict_result)^2)/ 569)
+    rmse = (sum(actual_diagnosis - predict_result))^2 / 569
     rmse_vec[i] = rmse
     i = i + 1
   }
@@ -426,16 +426,14 @@ rmse = function(x, y, lambda_vec) {
   return(list(rmse_vec=rmse_vec, coefs = coefs))
 }
 
-lambda_vector = seq(-10, 10, 0.1)
+lambda_vector = exp(seq(-5, 10, 0.5))
 rmse_vector = rmse(x, y, lambda_vector)
 
 colfunc = colorRampPalette(c("red","yellow","springgreen","royalblue"))
-coef_plot = ggplot(rmse_vector$coefs, aes(x=log(lambda), y = beta, color = coef.id)) + 
-  geom_line() + scale_colour_manual(labels = c("intercept", colnames(x)), 
-  values = colfunc(31)) + theme(legend.position="bottom")
-
-coef_plot
-
-plot(lambda_vector, rmse_vector$rmse_vec, xlab = "lambda", ylab = "RMSE")
+ggplot(rmse_vector$coefs, aes(x=log(lambda), y = beta, color = coef.id)) + geom_line() +
+  scale_colour_manual(labels = c("intercept", colnames(x)), 
+                      values = colfunc(31)) +
+  theme(legend.position="bottom")
+plot(log(lambda_vector), rmse_vector$rmse_vec)
 ```
 
