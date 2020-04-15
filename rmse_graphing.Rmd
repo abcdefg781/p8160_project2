@@ -239,7 +239,7 @@ criterion = function(true_y, predict_y_list, score){
   result = list()
   for (i in names(predict_y_list)) {
     predict_y = predict_y_list[[i]]
-    result[[i]] = score(true_y, predict_y)
+    result[[i]] = rmse_score(true_y, predict_y)
   }
   return(result)
 } 
@@ -249,6 +249,11 @@ criterion = function(true_y, predict_y_list, score){
 accuracy = function(true_y, predict_y){
   return(sum(true_y == predict_y) / length(true_y))
 }
+
+rmse_score = function(true_y, predict_y){
+  return(sqrt(sum((true_y - predict_y) ^ 2) / length(true_y)))
+}
+
 ```
 
 

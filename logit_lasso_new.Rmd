@@ -34,7 +34,7 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
   loglike_loss_old = -sum((y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
   
   step = 1
-  
+  #wrong_direction = 0
   # start to optimize iteratively
   while (TRUE) {
     
@@ -53,7 +53,7 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
       w[is_null(w)] = 0 # since the exp function may lead to infinity, let the NaN in w equals to 0
       z = x %*% beta * w + (y - p) # make a few changes in formula compared with that in lecture note to avoid divide by 0 error due to w = 0
       z_j = w * x[, -j] %*% beta[-j]
-      beta_new = sum(x[, j] * (z - z_j))
+      beta_new = sum(x[, j] * (z - z_j)) 
       if (j > 1) # if beta is not intercept, use soft threshold
         beta_new = soft_threshold(beta_new, lambda)
       beta_new = beta_new / (t(w) %*% (x[, j]^2))
@@ -70,17 +70,25 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
     
     
     # calculate loglike loss after all the coeffient have been updated at this turn
-    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta)))) + lambda * sum(beta[2:length(beta)])
+    loglike_loss = -sum(w * (y * (x %*% beta) - log(1 + exp(x %*% beta)))) 
 
     
     print(paste("step = ", step, " lambda = ", lambda, " loss: ", loglike_loss))
     
     # if some errors ocurr in loglike loss or this function optimizes at opposite direction, end up the function, and return the beta at previous step.
-    if (is.na(loglike_loss) || loglike_loss_old < loglike_loss)
+    if (is.na(loglike_loss) || loglike_loss_old < loglike_loss){
+      print("error end")
       return(beta_old)
-    
+    }
+   
+    if (abs(loglike_loss_old - loglike_loss) < tol){
+      print("normal end")
+      return(beta_old)
+    }
+      
     # if all the changed flags equal to FALSE, end up the function, and return the beta at previous step.
     if (sum(changed) == 0) {
+      print("normal end")
       return(beta_old)
     }
     
@@ -90,6 +98,7 @@ path_co_des = function(x, y, lambda, beta, tol = 0.01){
   }
 }
 ```
+
 
 
 
@@ -345,6 +354,9 @@ cv = function(x, y, lambda, model, predict, criterion, score,  n_fold = 5, tol =
 cancer_data = read.csv("./breast-cancer.csv")
 
 x = cancer_data %>% select(-id, -diagnosis) %>% as.matrix()
+
+x = x + 0.00000000001
+x = log(x)
 
 y = cancer_data %>% 
   select(diagnosis) %>% 
