@@ -12,6 +12,7 @@ library(caret)
 library(glmnet)
 library(matlib)
 library(MLmetrics)
+library(ROCR)
 ```
 
 # soft threshold
@@ -366,7 +367,7 @@ lambda_result
 # after select the best model by cv, we can use the best lambda here, and retrain a model
 # this is an example to train a model and get the beta coefficients, and predicting response variable.
 
-train_model = logit_lasso(x, y, lambda = 0.01, tol = 0.01, include_zero_lambda = FALSE)
+train_model = logit_lasso(x, y, lambda = 6.488, tol = 0.01, include_zero_lambda = FALSE)
 
 # the model consist of beta coefficients and other necessary variables for model.
 train_model
@@ -408,7 +409,7 @@ cv2 = function(data, k = 10) {
     
     # Train model
     train_model = logit_lasso(x_train, y_train, 
-                              lambda = 0.01, tol = 0.01, warm_start = TRUE,
+                              lambda = 6.488, tol = 0.01, warm_start = TRUE,
                               include_zero_lambda = FALSE)
     predict_result = predict(train_model, x_test)
     
